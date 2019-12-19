@@ -32,7 +32,8 @@ CMT_PREFIXES = {None, tokenize.STRING, tokenize.COMMENT, tokenize.INDENT, tokeni
 TODO_PREFIX = '@TODO'
 TODO_PREFIX_LEN = len(TODO_PREFIX)
 
-"""@TODO file name display"""
+"""@TODO string sample
+with multi-line text"""
 
 
 def filter_string(token):
@@ -91,7 +92,7 @@ def find_todo_strings(filename):
 
 
 def format_todo_strings(todos):
-    TODO = 'TODO at '
+    TODO = 'TODO at line '
     TODO_LEN = len(TODO)
 
     maxlnw = 0
@@ -116,13 +117,16 @@ def format_todo_strings(todos):
 
 def main(args):
     if len(args) < 2:
-        print(f'{__file__} filename.py [... filename.py]', file=sys.stderr)
+        print(f'{TITLE_VERSION}\nUsage: {__file__} filename.py [... filename.py]', file=sys.stderr)
         return 1
 
     for arg in args[1:]:
         ok, r = find_todo_strings(arg)
         if ok:
-            format_todo_strings(r)
+            if r:
+                print(os.path.split(arg)[1])
+                format_todo_strings(r)
+                print()
         else:
             print(r, file=sys.stderr)
 
@@ -130,5 +134,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    sys.argv.append(__file__)
     sys.exit(main(sys.argv))

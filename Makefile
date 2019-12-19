@@ -1,7 +1,7 @@
 packer = 7z
 pack = $(packer) a -mx=9
 arcx = .7z
-docs = COPYING Changelog README.md wishlist.json
+docs = COPYING Changelog README.md
 basename = pytodo
 srcversion = pytodo
 version = $(shell python3 -c 'from $(srcversion) import VERSION; print(VERSION)')
@@ -13,12 +13,12 @@ srcarcname = $(basename)-$(branch)-src$(arcx)
 srcs = pytodo.py
 backupdir = ~/shareddocs/pgm/python/
 
-app:
-	$(pack) -tzip $(zipname) $(srcs)
-	@echo '#!/usr/bin/env python3' >$(basename)
-	@cat $(zipname) >>$(basename)
-	rm $(zipname)
-	chmod 755 $(basename)
+#app:
+#	$(pack) -tzip $(zipname) $(srcs)
+#	@echo '#!/usr/bin/env python3' >$(basename)
+#	@cat $(zipname) >>$(basename)
+#	rm $(zipname)
+#	chmod 755 $(basename)
 
 archive:
 	$(pack) $(srcarcname) *.py *. Makefile *.geany $(docs)

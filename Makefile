@@ -43,3 +43,5 @@ docview:
 	#rm $(docname)
 show-branch:
 	@echo "$(branch)"
+todo:
+	$(basename).py $(basename).py >TODO

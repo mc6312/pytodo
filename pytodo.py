@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+#@TODO simple TODO comment sample
+
 """ pytodo.py
 
     Copyright 2019 MC-6312
@@ -25,14 +27,14 @@ import sys
 
 
 TITLE = 'PyToDo'
-VERSION = '1.0'
+VERSION = '1.01'
 TITLE_VERSION = f'{TITLE} v{VERSION}'
 
 CMT_PREFIXES = {None, tokenize.STRING, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT, tokenize.NL, tokenize.NEWLINE}
 TODO_PREFIX = '@TODO'
 TODO_PREFIX_LEN = len(TODO_PREFIX)
 
-"""@TODO string sample
+"""@TODO long TODO sample
 with multi-line text"""
 
 
@@ -65,10 +67,10 @@ def find_todo_strings(filename):
         if 1st == False: string with error message."""
 
     if not os.path.exists(filename):
-        return (False, f'{filename} is not found')
+        return (False, '%s is not found' % filename)
 
     if os.path.splitext(filename)[1].lower() != '.py':
-        return (False, f'{filename} is not Python script')
+        return (False, '%s is not Python script' % filename)
 
     todos = []
 
@@ -92,9 +94,6 @@ def find_todo_strings(filename):
 
 
 def format_todo_strings(todos):
-    TODO = 'TODO at line '
-    TODO_LEN = len(TODO)
-
     maxlnw = 0
     linenumbers = []
 
@@ -106,18 +105,20 @@ def format_todo_strings(todos):
 
     maxlnw += 1
 
-    tabfmt = f'%{TODO_LEN}s%{maxlnw}s %s'
+    tabfmt = '%%%ds %%s' % maxlnw
 
     for todolnum, todostrs in todos:
-        print(tabfmt % (TODO, '%d:' % todolnum, todostrs[0]))
+        print(tabfmt % ('%d:' % todolnum, todostrs[0]))
 
         for todostr in todostrs[1:]:
-            print(tabfmt % ('', '', todostr))
+            print(tabfmt % ('', todostr))
 
 
 def main(args):
     if len(args) < 2:
-        print(f'{TITLE_VERSION}\nUsage: {__file__} filename.py [... filename.py]', file=sys.stderr)
+        print('%s\nUsage: %s filename.py [... filename.py]' %\
+            (TITLE_VERSION, __file__),
+            file=sys.stderr)
         return 1
 
     for arg in args[1:]:

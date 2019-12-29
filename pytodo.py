@@ -24,10 +24,11 @@
 import tokenize
 import os, os.path
 import sys
+from collections import namedtuple
 
 
 TITLE = 'PyToDo'
-VERSION = '1.01'
+VERSION = '1.02'
 TITLE_VERSION = f'{TITLE} v{VERSION}'
 
 CMT_PREFIXES = {None, tokenize.STRING, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT, tokenize.NL, tokenize.NEWLINE}
@@ -36,6 +37,9 @@ TODO_PREFIX_LEN = len(TODO_PREFIX)
 
 """@TODO long TODO sample
 with multi-line text"""
+
+
+todoinfo = namedtuple('todoinfo', 'lineno context content')
 
 
 def filter_string(token):
@@ -63,7 +67,7 @@ def find_todo_strings(filename):
     Returns two-tuple.
     1st element: boolean (True if no errors);
     2nd element:
-        if 1st == True: list of two-tuples with line numbers and strings;
+        if 1st == True: list of todoinfo;
         if 1st == False: string with error message."""
 
     if not os.path.exists(filename):
@@ -73,45 +77,81 @@ def find_todo_strings(filename):
         return (False, '%s is not Python script' % filename)
 
     todos = []
+    stack = []
 
     with open(filename, 'rb') as f:
         tokens = tokenize.tokenize(f.readline)
 
         lasttype = None
+        lastdef = False
 
         for tkn in tokens:
-            if tkn.type in (tokenize.COMMENT, tokenize.STRING) and lasttype in CMT_PREFIXES:
+            if tkn.type == tokenize.NAME:
+                if lastdef:
+                    stack.append(tkn.string)
+                    lastdef = False
+                elif tkn.string in ('def', 'class'):
+                    lastdef = True
+                else:
+                    lastdef = False
+            elif tkn.type == tokenize.DEDENT:
+                if stack:
+                    del stack[-1]
+            elif tkn.type in (tokenize.COMMENT, tokenize.STRING) and lasttype in CMT_PREFIXES:
                 s = filter_string(tkn)
                 if s.startswith(TODO_PREFIX):
                     # cleaning
                     s = list(map(lambda v: v.strip(), s[TODO_PREFIX_LEN:].splitlines()))
 
-                    todos.append((tkn.start[0], s))
+                    todos.append(todoinfo(tkn.start[0], '.'.join(stack), s))
 
             lasttype = tkn.type
 
     return (True, todos)
 
 
+class DemoClass():
+    #@TODO todo string in class definition
+
+    def demo_method():
+        #@TODO todo string in class method
+
+        def second_level_function():
+            #@TODO todo string in second level function
+            pass
+
+
 def format_todo_strings(todos):
     maxlnw = 0
     linenumbers = []
 
-    for todolnum, todostrs in todos:
-        lnumstr = str(todolnum)
+    #@TODO fix TODO context formatting
+
+    for nfo in todos:
+        lnumstr = str(nfo.lineno)
         lnumstrl = len(lnumstr)
         if lnumstrl > maxlnw:
             maxlnw = lnumstrl
 
     maxlnw += 1
 
-    tabfmt = '%%%ds %%s' % maxlnw
+    tabfmt = '  %%%ds %%s' % maxlnw
+    curctx = ''
+    first = True
 
-    for todolnum, todostrs in todos:
-        print(tabfmt % ('%d:' % todolnum, todostrs[0]))
+    for nfo in todos:
+        if first:
+            first = False
+        else:
+            print()
 
-        for todostr in todostrs[1:]:
-            print(tabfmt % ('', todostr))
+        if nfo.context and nfo.context != curctx:
+            print('  %s()' % nfo.context)
+
+        print(tabfmt % ('%d:' % nfo.lineno, nfo.content[0]))
+
+        for cntstr in nfo.content[1:]:
+            print(tabfmt % ('', cntstr))
 
 
 def main(args):

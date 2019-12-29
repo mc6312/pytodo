@@ -79,11 +79,16 @@ def find_todo_strings(filename):
     todos = []
     stack = []
 
+    #@TODO fix context stack
+
     with open(filename, 'rb') as f:
         tokens = tokenize.tokenize(f.readline)
 
         lasttype = None
         lastdef = False
+        lastdeflevel = 0
+        lastlevel = 0
+        level = 0
 
         for tkn in tokens:
             if tkn.type == tokenize.NAME:
@@ -94,10 +99,18 @@ def find_todo_strings(filename):
                     lastdef = True
                 else:
                     lastdef = False
+            elif tkn.type == tokenize.INDENT:
+                lastlevel = level
+                level += 1
             elif tkn.type == tokenize.DEDENT:
-                if stack:
+                lastlevel = level
+                if level > 0:
+                    level -= 1
+
+                if level < lastdeflevel and stack:
                     del stack[-1]
             elif tkn.type in (tokenize.COMMENT, tokenize.STRING) and lasttype in CMT_PREFIXES:
+                lastdeflevel = level
                 s = filter_string(tkn)
                 if s.startswith(TODO_PREFIX):
                     # cleaning
@@ -145,8 +158,11 @@ def format_todo_strings(todos):
         else:
             print()
 
-        if nfo.context and nfo.context != curctx:
-            print('  %s()' % nfo.context)
+        if nfo.context != curctx:
+            if nfo.context:
+                print('  %s()' % nfo.context)
+
+            curctx = nfo.context
 
         print(tabfmt % ('%d:' % nfo.lineno, nfo.content[0]))
 

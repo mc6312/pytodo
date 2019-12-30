@@ -10,7 +10,7 @@ title_version = $(shell python3 -c 'from $(srcversion) import TITLE_VERSION; pri
 zipname = $(basename).zip
 arcname = $(basename)$(arcx)
 srcarcname = $(basename)-$(branch)-src$(arcx)
-srcs = pytodo.py
+srcs = *.py
 backupdir = ~/shareddocs/pgm/python/
 
 #app:

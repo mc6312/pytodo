@@ -191,4 +191,5 @@ def main(args):
 
 
 if __name__ == '__main__':
+    sys.argv.append(__file__)
     sys.exit(main(sys.argv))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-#@TODO simple TODO comment sample
+#@TODO однострочный TODO-комментарий
 
 """ pytodo.py
 
@@ -28,28 +28,32 @@ from collections import namedtuple
 
 
 TITLE = 'PyToDo'
-VERSION = '1.02'
+VERSION = '1.03'
 TITLE_VERSION = f'{TITLE} v{VERSION}'
 
 CMT_PREFIXES = {None, tokenize.STRING, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT, tokenize.NL, tokenize.NEWLINE}
 TODO_PREFIX = '@TODO'
 TODO_PREFIX_LEN = len(TODO_PREFIX)
 
-"""@TODO long TODO sample
-with multi-line text"""
+"""@TODO длинный пример TODO
+с многострочным текстом"""
 
 
 todoinfo = namedtuple('todoinfo', 'lineno context content')
 
 
-def filter_string(token):
+def filter_token_string(token):
+    """Предварительная чистка комментария или документирующей строки
+    от лишнего."""
+
     s = token.string
 
     if token.type == tokenize.COMMENT:
-        # remove starting "#"
+        # убираем начальный символ "#"
         return s[1:].strip()
     else:
-        # STRING type, remove all starting/ending quotation marks
+        # элемент типа STRING, удаляем все лишние открывающие/закрывающие
+        # кавычки
 
         qmark = s[0]
         start = 1
@@ -62,13 +66,14 @@ def filter_string(token):
 
 
 def find_todo_strings(filename):
-    """Search @TODO prefixes in comments and docstrings into filename.
+    """Поиск префиксов @TODO в комментариях и документирующих строках
+    в файле с именем filename.
 
-    Returns two-tuple.
-    1st element: boolean (True if no errors);
-    2nd element:
-        if 1st == True: list of todoinfo;
-        if 1st == False: string with error message."""
+    Возвращает кортеж из двух элементов:
+    1й: булевское значение (True, если нет ошибок);
+    2й:
+        если 1й == True: список экземпляров todoinfo;
+        если 1й == False: строка с сообщением об ошибке."""
 
     if not os.path.exists(filename):
         return (False, '%s is not found' % filename)
@@ -77,9 +82,6 @@ def find_todo_strings(filename):
         return (False, '%s is not Python script' % filename)
 
     todos = []
-    stack = []
-
-    #@TODO fix context stack
 
     with open(filename, 'rb') as f:
         tokens = tokenize.tokenize(f.readline)
@@ -89,48 +91,51 @@ def find_todo_strings(filename):
         lastdeflevel = 0
         lastlevel = 0
         level = 0
+        stack = []
 
-        for tkn in tokens:
-            if tkn.type == tokenize.NAME:
+        for token in tokens:
+            if token.type == tokenize.NAME:
                 if lastdef:
-                    stack.append(tkn.string)
+                    stack.append(token.string)
                     lastdef = False
-                elif tkn.string in ('def', 'class'):
+                elif token.string in ('def', 'class'):
+                    # начало описания - потом имя будет добавлено в стек
                     lastdef = True
-                else:
-                    lastdef = False
-            elif tkn.type == tokenize.INDENT:
+                elif token.string in ('with', 'try', 'except', 'finally'):
+                    # потому что должны учитываться и эти уровни вложенности
+                    stack.append(None)
+            elif token.type == tokenize.INDENT:
                 lastlevel = level
                 level += 1
-            elif tkn.type == tokenize.DEDENT:
+            elif token.type == tokenize.DEDENT:
                 lastlevel = level
                 if level > 0:
                     level -= 1
 
-                if level < lastdeflevel and stack:
+                if stack:
                     del stack[-1]
-            elif tkn.type in (tokenize.COMMENT, tokenize.STRING) and lasttype in CMT_PREFIXES:
+            elif token.type in (tokenize.COMMENT, tokenize.STRING) and lasttype in CMT_PREFIXES:
                 lastdeflevel = level
-                s = filter_string(tkn)
+                s = filter_token_string(token)
                 if s.startswith(TODO_PREFIX):
-                    # cleaning
-                    s = list(map(lambda v: v.strip(), s[TODO_PREFIX_LEN:].splitlines()))
+                    # окончательная чистка от лишних пробелов и переносов
+                    s = list(map(lambda v: v.strip(), s[TODO_PREFIX_LEN:].splitlines(False)))
 
-                    todos.append(todoinfo(tkn.start[0], '.'.join(stack), s))
+                    todos.append(todoinfo(token.start[0], '.'.join(filter(None, stack)), s))
 
-            lasttype = tkn.type
+            lasttype = token.type
 
     return (True, todos)
 
 
 class DemoClass():
-    #@TODO todo string in class definition
+    #@TODO todo-строка в описании класса
 
     def demo_method():
-        #@TODO todo string in class method
+        #@TODO todo-строка в описании метода класса
 
         def second_level_function():
-            #@TODO todo string in second level function
+            #@TODO todo-строка в описании функции в методе класса
             pass
 
 
@@ -138,7 +143,7 @@ def format_todo_strings(todos):
     maxlnw = 0
     linenumbers = []
 
-    #@TODO fix TODO context formatting
+    #@TODO допилить форматирование контекстов TODO
 
     for nfo in todos:
         lnumstr = str(nfo.lineno)
@@ -148,7 +153,7 @@ def format_todo_strings(todos):
 
     maxlnw += 1
 
-    tabfmt = '  %%%ds %%s' % maxlnw
+    tabfmt = '    %%%ds %%s' % maxlnw
     curctx = ''
     first = True
 
@@ -191,5 +196,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-    sys.argv.append(__file__)
     sys.exit(main(sys.argv))

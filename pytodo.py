@@ -28,8 +28,8 @@ from collections import namedtuple
 
 
 TITLE = 'PyToDo'
-VERSION = '1.04'
-TITLE_VERSION = f'{TITLE} v{VERSION}'
+VERSION = '1.05'
+TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
 
 CMT_PREFIXES = {None, tokenize.STRING, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT, tokenize.NL, tokenize.NEWLINE}
 TODO_PREFIX = '@TODO'
@@ -42,6 +42,7 @@ DEBUG = False
 
 
 todoinfo = namedtuple('todoinfo', 'lineno context content')
+stackitem = namedtuple('stackitem', 'token visible')
 
 
 def filter_token_string(token):
@@ -94,36 +95,44 @@ def find_todo_strings(filename):
         lastlevel = 0
         lastline = 0
         level = 0
+
+        # stack содержит экземпляры stackitem
         stack = []
 
-        def __stack_str():
-            return '.'.join(filter(None, stack))
-
         def __dbg_stack(token):
+            def __stack_str(si):
+                t = si.token.string
+
+                if si.visible:
+                    t = '\033[32m%s\033[0m' % t
+
+                return t
+
             if lastline != token.start[0]:
-                print('\033[1m%d %s ("%s"):\033[0m %s' % (
+                print('\033[0m%d \033[1m%15s\033[0m: %s ("%s")' % (
                     token.start[0],
                     tokenize.tok_name[token.type],
+                    '.'.join(map(__stack_str, stack)),
                     token.string,
-                    __stack_str()))
+                    ))
 
         for token in tokens:
             if token.type == tokenize.NAME:
                 if lastdef:
-                    stack.append(token.string)
+                    stack.append(stackitem(token, True))
                     if DEBUG: __dbg_stack(token)
                     lastdef = False
                 elif token.string in ('def', 'class'):
                     # начало описания - потом имя будет добавлено в стек
                     if DEBUG: __dbg_stack(token)
+                    stack.append(stackitem(token, False))
                     lastdef = True
-                elif token.string in ('with', 'try', 'except', 'finally', 'for', 'while', 'if', 'elif'):
+                elif token.string in ('with', 'try', 'except', 'finally', 'for', 'while', 'if', 'elif'):#, 'else'):
                     # потому что должны учитываться и эти уровни вложенности
-                    # а вот "else" почему-то не должон...
                     if DEBUG: __dbg_stack(token)
-                    stack.append(None)
-                #else:
-                #    __dbg_stack(token)
+                    stack.append(stackitem(token, False))
+                elif DEBUG:
+                    __dbg_stack(token)
             elif token.type == tokenize.INDENT:
                 lastlevel = level
                 level += 1
@@ -143,7 +152,9 @@ def find_todo_strings(filename):
                     # окончательная чистка от лишних пробелов и переносов
                     s = list(map(lambda v: v.strip(), s[TODO_PREFIX_LEN:].splitlines(False)))
 
-                    todos.append(todoinfo(token.start[0], __stack_str(), s))
+                    todos.append(todoinfo(token.start[0],
+                                          '.'.join(map(lambda si: si.token.string, filter(lambda si: si.visible, stack))),
+                                          s))
 
             lasttype = token.type
             if token.start[0] != lastline:
@@ -182,13 +193,13 @@ def format_todo_strings(todos):
     first = True
 
     for nfo in todos:
-        if first:
-            first = False
-        else:
-            print()
-
         if nfo.context != curctx:
             if nfo.context:
+                if first:
+                    first = False
+                else:
+                    print()
+
                 print('  %s()' % nfo.context)
 
             curctx = nfo.context
@@ -201,8 +212,10 @@ def format_todo_strings(todos):
 
 def main(args):
     if len(args) < 2:
-        print('%s\nUsage: %s filename.py [... filename.py]' %\
-            (TITLE_VERSION, __file__),
+        print('''%s
+Todo list generator for Python %d scripts.
+
+Usage: %s filename.py [... filename.py]''' % (TITLE_VERSION, sys.version_info.major, __file__),
             file=sys.stderr)
         return 1
 

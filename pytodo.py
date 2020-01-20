@@ -28,12 +28,14 @@ from collections import namedtuple
 
 
 TITLE = 'PyToDo'
-VERSION = '1.03'
+VERSION = '1.04'
 TITLE_VERSION = f'{TITLE} v{VERSION}'
 
 CMT_PREFIXES = {None, tokenize.STRING, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT, tokenize.NL, tokenize.NEWLINE}
 TODO_PREFIX = '@TODO'
 TODO_PREFIX_LEN = len(TODO_PREFIX)
+
+DEBUG = False
 
 """@TODO длинный пример TODO
 с многострочным текстом"""
@@ -90,23 +92,42 @@ def find_todo_strings(filename):
         lastdef = False
         lastdeflevel = 0
         lastlevel = 0
+        lastline = 0
         level = 0
         stack = []
+
+        def __stack_str():
+            return '.'.join(filter(None, stack))
+
+        def __dbg_stack(token):
+            if lastline != token.start[0]:
+                print('\033[1m%d %s ("%s"):\033[0m %s' % (
+                    token.start[0],
+                    tokenize.tok_name[token.type],
+                    token.string,
+                    __stack_str()))
 
         for token in tokens:
             if token.type == tokenize.NAME:
                 if lastdef:
                     stack.append(token.string)
+                    if DEBUG: __dbg_stack(token)
                     lastdef = False
                 elif token.string in ('def', 'class'):
                     # начало описания - потом имя будет добавлено в стек
+                    if DEBUG: __dbg_stack(token)
                     lastdef = True
-                elif token.string in ('with', 'try', 'except', 'finally'):
+                elif token.string in ('with', 'try', 'except', 'finally', 'for', 'while', 'if', 'elif'):
                     # потому что должны учитываться и эти уровни вложенности
+                    # а вот "else" почему-то не должон...
+                    if DEBUG: __dbg_stack(token)
                     stack.append(None)
+                #else:
+                #    __dbg_stack(token)
             elif token.type == tokenize.INDENT:
                 lastlevel = level
                 level += 1
+                if DEBUG: __dbg_stack(token)
             elif token.type == tokenize.DEDENT:
                 lastlevel = level
                 if level > 0:
@@ -114,6 +135,7 @@ def find_todo_strings(filename):
 
                 if stack:
                     del stack[-1]
+                if DEBUG: __dbg_stack(token)
             elif token.type in (tokenize.COMMENT, tokenize.STRING) and lasttype in CMT_PREFIXES:
                 lastdeflevel = level
                 s = filter_token_string(token)
@@ -121,9 +143,11 @@ def find_todo_strings(filename):
                     # окончательная чистка от лишних пробелов и переносов
                     s = list(map(lambda v: v.strip(), s[TODO_PREFIX_LEN:].splitlines(False)))
 
-                    todos.append(todoinfo(token.start[0], '.'.join(filter(None, stack)), s))
+                    todos.append(todoinfo(token.start[0], __stack_str(), s))
 
             lasttype = token.type
+            if token.start[0] != lastline:
+                lastline = token.start[0]
 
     return (True, todos)
 

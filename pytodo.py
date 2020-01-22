@@ -28,21 +28,39 @@ from collections import namedtuple
 
 
 TITLE = 'PyToDo'
-VERSION = '1.05'
+VERSION = '1.06'
 TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
 
 CMT_PREFIXES = {None, tokenize.STRING, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT, tokenize.NL, tokenize.NEWLINE}
 TODO_PREFIX = '@TODO'
 TODO_PREFIX_LEN = len(TODO_PREFIX)
 
-DEBUG = False
 
 """@TODO длинный пример TODO
 с многострочным текстом"""
 
 
 todoinfo = namedtuple('todoinfo', 'lineno context content')
-stackitem = namedtuple('stackitem', 'token visible')
+stackitem = namedtuple('stackitem', 'token isclass')
+
+
+def single_line_function(): return 0 #@TODO комментарий к однострочной функции
+
+
+def two_line_function():
+    #@TODO комментарий к многострочной функции
+    return 0
+
+
+def multi_line_function():
+    class DemoClass1():
+        def single_line_method(self): return 0 #@TODO TODO-комментарий на одной строке с однострочным методом
+
+        def double_line_method(self): #@TODO образец TODO-комментария
+            '''@TODO образец TODO-комментария в docstring'''
+            return 0
+
+    return DemoClass1()
 
 
 def filter_token_string(token):
@@ -63,6 +81,7 @@ def filter_token_string(token):
         end = len(s) - 1
 
         while start < end and s[start] == qmark: start += 1
+
         while end > start and s[end] == qmark: end -= 1
 
         return s[start:end + 1].strip()
@@ -86,88 +105,121 @@ def find_todo_strings(filename):
 
     todos = []
 
+    def __flush_todo(lineno, s):
+        if not s:
+            return
+
+        if s.startswith(TODO_PREFIX):
+            #print('.'.join(map(lambda si: si.token.string if si else '@', filter(None, stack))))
+
+            # окончательная чистка от лишних пробелов и переносов
+            s = list(map(lambda v: v.strip(), s[TODO_PREFIX_LEN:].splitlines(False)))
+
+            #@TODO допилить форматирование контекстов TODO
+            todos.append(todoinfo(lineno,
+                         '.'.join(map(lambda si: si.token.string, filter(None, stack))),
+                         s))
+
     with open(filename, 'rb') as f:
         tokens = tokenize.tokenize(f.readline)
 
         lasttype = None
-        lastdef = False
-        lastdeflevel = 0
-        lastlevel = 0
-        lastline = 0
-        level = 0
 
-        # stack содержит экземпляры stackitem
+        ishead = False
+        isclass = False
+        isvisible = False
+        isnewline = False
+        nametoken = None
+
+        # stack содержит экземпляры stackitem или None
         stack = []
 
-        def __dbg_stack(token):
-            def __stack_str(si):
-                t = si.token.string
+        # "отложенные" комментарии
+        # содержит кортежи из двух элементов - (номер строки, 'строка').
+        # т.к. tokenize считает, что #-комментарий, расположенный после
+        # заголовка класса/функции/метода, идет _перед_ INDENT и является
+        # частью заголовка - стек в этот момент содержит на один элемент
+        # меньше, чем мне надо
+        comments = []
 
-                if si.visible:
-                    t = '\033[32m%s\033[0m' % t
-
-                return t
-
-            if lastline != token.start[0]:
-                print('\033[0m%d \033[1m%15s\033[0m: %s ("%s")' % (
-                    token.start[0],
-                    tokenize.tok_name[token.type],
-                    '.'.join(map(__stack_str, stack)),
-                    token.string,
-                    ))
+        # в стек добавляются записи в случае цепочки токенов:
+        # NAME="def" NAME="<idname>" ... NEWLINE INDENT
+        # "видимые": для idname in (def, class)
+        # "невидимые": для idname in ('with', 'try', 'except', 'finally', 'for', 'while', 'if', 'elif')
+        # аналогичные цепочки, НЕ заканчивающиеся токеном INDENT,
+        # в стек НЕ добавляются (это м.б. однострочные функции и т.п.)
 
         for token in tokens:
             if token.type == tokenize.NAME:
-                if lastdef:
-                    stack.append(stackitem(token, True))
-                    if DEBUG: __dbg_stack(token)
-                    lastdef = False
-                elif token.string in ('def', 'class'):
-                    # начало описания - потом имя будет добавлено в стек
-                    if DEBUG: __dbg_stack(token)
-                    stack.append(stackitem(token, False))
-                    lastdef = True
-                elif token.string in ('with', 'try', 'except', 'finally', 'for', 'while', 'if', 'elif'):#, 'else'):
-                    # потому что должны учитываться и эти уровни вложенности
-                    if DEBUG: __dbg_stack(token)
-                    stack.append(stackitem(token, False))
-                elif DEBUG:
-                    __dbg_stack(token)
-            elif token.type == tokenize.INDENT:
-                lastlevel = level
-                level += 1
-                if DEBUG: __dbg_stack(token)
-            elif token.type == tokenize.DEDENT:
-                lastlevel = level
-                if level > 0:
-                    level -= 1
+                if token.string in ('def', 'class'):
+                    ishead = True
+                    isclass = token.string == 'class'
+                    isvisible = True
+                    nametoken = None
+                elif token.string in ('with', 'try', 'except', 'finally', 'for', 'while', 'if', 'elif', 'else'):
+                    ishead = False
+                    isclass = False
+                    isvisible = False
+                    nametoken = None
+                elif ishead:
+                    if nametoken is None:
+                        nametoken = token
+            elif token.type == tokenize.NEWLINE:
+                if ishead:
+                    isnewline = True
 
+                    # есть "отложенные" комментарии
+                    if comments:
+                        stack.append(stackitem(nametoken, isclass))
+
+                        for lnum, cmts in comments:
+                            __flush_todo(lnum, cmts)
+
+                        del stack[-1]
+
+                        comments.clear()
+
+            elif token.type == tokenize.INDENT:
+                if ishead and isnewline:
+                    si = stackitem(nametoken, isclass) if isvisible else None
+                    ishead = False
+                else:
+                    si = None
+                    ishead = False
+
+                stack.append(si)
+            elif token.type == tokenize.DEDENT:
                 if stack:
                     del stack[-1]
-                if DEBUG: __dbg_stack(token)
-            elif token.type in (tokenize.COMMENT, tokenize.STRING) and lasttype in CMT_PREFIXES:
-                lastdeflevel = level
-                s = filter_token_string(token)
-                if s.startswith(TODO_PREFIX):
-                    # окончательная чистка от лишних пробелов и переносов
-                    s = list(map(lambda v: v.strip(), s[TODO_PREFIX_LEN:].splitlines(False)))
-
-                    todos.append(todoinfo(token.start[0],
-                                          '.'.join(map(lambda si: si.token.string, filter(lambda si: si.visible, stack))),
-                                          s))
+            elif token.type == tokenize.COMMENT:
+                if ishead:
+                    cmts = filter_token_string(token)
+                    if cmts:
+                        if isnewline:
+                            __flush_todo(token.start[0], cmts)
+                        else:
+                            comments.append((token.start[0], cmts))
+                else:
+                    __flush_todo(token.start[0], filter_token_string(token))
+            elif token.type == tokenize.STRING and lasttype in CMT_PREFIXES:
+                # дабы сюда попадали только document strings
+                __flush_todo(token.start[0], filter_token_string(token))
 
             lasttype = token.type
-            if token.start[0] != lastline:
-                lastline = token.start[0]
 
     return (True, todos)
 
 
-class DemoClass():
+class DemoClass2():
     #@TODO todo-строка в описании класса
 
+    class InnerDemoClass():
+        def inner_demo_class_method(self): #@TODO комментарий в заголовке inner_demo_class_method
+            #@TODO комментарий в теле inner_demo_class_method
+            pass
+
     def demo_method():
-        #@TODO todo-строка в описании метода класса
+        '''@TODO todo-строка в описании метода класса'''
 
         def second_level_function():
             #@TODO todo-строка в описании функции в методе класса
@@ -177,8 +229,6 @@ class DemoClass():
 def format_todo_strings(todos):
     maxlnw = 0
     linenumbers = []
-
-    #@TODO допилить форматирование контекстов TODO
 
     for nfo in todos:
         lnumstr = str(nfo.lineno)
@@ -194,12 +244,9 @@ def format_todo_strings(todos):
 
     for nfo in todos:
         if nfo.context != curctx:
-            if nfo.context:
-                if first:
-                    first = False
-                else:
-                    print()
+            print()
 
+            if nfo.context:
                 print('  %s()' % nfo.context)
 
             curctx = nfo.context
@@ -233,4 +280,5 @@ Usage: %s filename.py [... filename.py]''' % (TITLE_VERSION, sys.version_info.ma
 
 
 if __name__ == '__main__':
+    sys.argv.append(__file__)
     sys.exit(main(sys.argv))

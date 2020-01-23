@@ -33,6 +33,7 @@ backup:
 update:
 	$(packer) x -y $(backupdir)$(srcarcname)
 commit:
+	make todo
 	git commit -a -uno -m "$(version)"
 docview:
 	$(eval docname = README.htm)

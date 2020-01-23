@@ -28,7 +28,7 @@ import re
 
 
 TITLE = 'PyToDo'
-VERSION = '1.07'
+VERSION = '1.08'
 TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
 
 CMT_PREFIXES = {None, tokenize.STRING, tokenize.COMMENT, tokenize.INDENT, tokenize.DEDENT, tokenize.NL, tokenize.NEWLINE}
@@ -193,7 +193,7 @@ def find_todo_strings(filename):
                     if lastsitem:
                         buf.append('.' if lastsitem.itype == sitem.CLASS else '/')
 
-                    buf.append(sitem.token.string)
+                    buf.append('%s%s' % (sitem.token.string, '' if sitem.itype == sitem.CLASS else '()'))
 
                     lastsitem = sitem
 
@@ -302,7 +302,7 @@ def format_todo_strings(todos, colors, ofile):
             print(file=ofile)
 
             if nfo.context:
-                print(colors[COLOR_CONTEXT] % ('  %s()' % nfo.context), file=ofile)
+                print(colors[COLOR_CONTEXT] % ('  %s' % nfo.context), file=ofile)
 
             curctx = nfo.context
 

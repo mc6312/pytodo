@@ -43,6 +43,6 @@ docview:
 	x-www-browser $(docname)
 	#rm $(docname)
 show-branch:
-	@echo "$(branch)"
+	@echo "$(branch)-$(version)"
 todo:
 	$(basename).py $(basename).py >TODO

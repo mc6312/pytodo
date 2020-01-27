@@ -27,9 +27,14 @@ from collections import namedtuple
 import re
 
 
+DEBUG = True
+
+
 TITLE = 'PyToDo'
-VERSION = '1.09'
+VERSION = '1.10%s' % 'debug' if DEBUG else ''
 TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
+
+
 
 
 """ Сей скрипт является проверочным файлом для самого себя, соответственно
@@ -61,7 +66,10 @@ def two_line_function(): #@TODO комментарий в заголовке м�
 
 
 def crazy_function(param=lambda a: a):#функция с лямбдой в параметрах
-    return param
+    try:
+        return param
+    except:
+        return None
 
 
 def multi_line_function():
@@ -128,13 +136,18 @@ class todoinfo():
 
 
 class stackitem():
-    __slots__ = 'token', 'itype', 'todos', 'multiline'
+    __slots__ = 'token', 'itype', 'disp', 'todos', 'multiline'
 
     DEF, CLASS, OTHER = range(3)
 
-    def __init__(self, token, itype):
+    def __init__(self, token, itype, disp):
+        """token    - tokenize.TokenInfo,
+        itype       - DEF/CLASS/...,
+        disp        - None или str."""
+
         self.token = token
         self.itype = itype
+        self.disp = disp
         self.todos = []
         self.multiline = False
 
@@ -160,6 +173,10 @@ class ToDoParser():
 
         # stack содержит экземпляры stackitem
         self.stack = []
+        self.stacktop = None
+        self.curtoken = None
+        self.lasttoken = None
+        self.blockop = False
 
     def format_stack(self, dofilter):
         #TODO format_stack: проверочный todo-комментарий в начале метода
@@ -175,7 +192,7 @@ class ToDoParser():
             if lastsitem:
                 buf.append('.' if lastsitem.itype == sitem.CLASS else '/')
 
-            buf.append('%s%s' % (sitem.token.string, '' if sitem.itype == sitem.CLASS else '()'))
+            buf.append('%s%s' % (sitem.disp, '()' if sitem.itype == sitem.DEF else ''))
 
             lastsitem = sitem
 
@@ -191,79 +208,119 @@ class ToDoParser():
 
         nfo.context = self.format_stack(True)
 
-        if self.stack:
-            self.stack[-1].todos.append(nfo)
-        else:
-            self.todos.append(nfo)
+        self.todos.append(nfo)
 
         #TODO append_todo: проверочный todo-комментарий в конце метода
 
-    def __print_stack(self, token):
-        #TODO если будет нечем заняться - раскасить отладочный вывод
-        print('%4d %10s: %s' % (
-                    token.start[0],
-                    ' '.join(filter(None, token.string.strip().split(None)))[:10],
+    def __print_context(self, what):
+        if not DEBUG:
+            return
+
+        def __tok_str(token):
+            if token is None:
+                return ''
+
+            ts = ' '.join(filter(None, map(lambda s: s.strip(), token.string.split(None))))
+            if len(ts) > 10:
+                ts = ts[:10]
+
+            if ts:
+                ts = '(%s)' % ts
+
+            if token.exact_type != token.type:
+                tt = '.%s' % tokenize.tok_name[token.exact_type]
+            else:
+                tt = ''
+
+            return '%s%s%s' % (tokenize.tok_name[token.type], tt, ts)
+
+        # what curtoken lasttoken stack
+        print('{:4d}  \033[93m{:<10s}  \033[34m{:<32s}  \033[0;32m{:s}\033[0m'.format(
+                    self.curtoken.start[0],
+                    what[:10],
+                    '%s%s' % ('' if not self.lasttoken else '%s, ' % __tok_str(self.lasttoken),
+                              __tok_str(self.curtoken)),
                     self.format_stack(False)),
                 file=sys.stderr)
+
+    def __push_stack(self, si):
+        self.stack.append(si)
+        self.stacktop = self.stack[-1]
+
+        self.__print_context('push_stack')
+
+    def __pop_stack(self, ensureifnotmultiline):
+        if self.stack:
+            if ensureifnotmultiline and self.stack[-1].multiline:
+                return
+
+            del self.stack[-1]
+
+            self.stacktop = self.stack[-1] if self.stack else None
+
+            self.__print_context('pop_stack')
 
     def parse_tokens(self, tokens):
         """Возвращает None в случае успеха, строку с сообщением в случае ошибки."""
 
-        lasttoken = None
-        blockop = False
 
         #FIXME: разобраться наконец с уровнями вложенности
-        for token in tokens:
-            if token.type == tokenize.ERRORTOKEN:
-                return (False, 'syntax error at %d:%d of file "%s"' % (*token.start, filename))
-            elif token.type == tokenize.NAME:
-                if token.string in self.OPERATOR_NAMES:
-                    # начало функции, класса или метода (а также if/else/...)
 
-                    if lasttoken is None or lasttoken.type in self.OPERATOR_PREFIXES:
+        def __check_op_and_push_stack(blockopvalue):
+            """Проверка оператора, в случае успеха он помещается в стек"""
+
+
+            if self.lasttoken is not None and self.lasttoken.type == tokenize.NAME and self.lasttoken.string in self.OPERATOR_NAMES and self.blockop == blockopvalue:
+                disptoken = self.curtoken
+
+                if self.lasttoken.string == self.NAME_CLASS:
+                    itype = stackitem.CLASS
+                elif self.lasttoken.string == self.NAME_DEF:
+                    itype = stackitem.DEF
+                else:
+                    itype = stackitem.OTHER
+                    disptoken = self.lasttoken
+
+                self.__push_stack(stackitem(self.curtoken, itype, disptoken.string))
+
+        for self.curtoken in tokens:
+            if self.curtoken.type == tokenize.ERRORTOKEN:
+                return (False, 'syntax error at %d:%d of file "%s"' % (*self.curtoken.start, filename))
+            elif self.curtoken.type == tokenize.NAME:
+                if self.curtoken.string in self.OPERATOR_NAMES:
+                    # начало функции, класса или метода (а также if/else/...)
+                    if self.lasttoken is None or self.lasttoken.type in self.OPERATOR_PREFIXES:
                         # откидываем случаи типа a = something if condition else other
-                        blockop = False
+                        self.blockop = False
 
                         # если на вершине стека однострочный оператор - выкидываем его
-                        if self.stack and not self.stack[-1].multiline:
-                            self.todos += self.stack[-1].todos
-                            #self.stack[-1].todos.clear()
-                            del self.stack[-1]
+                        self.__pop_stack(True)
                     else:
-                        blockop = True
-
-                elif lasttoken is not None and lasttoken.type == tokenize.NAME and lasttoken.string in self.OPERATOR_NAMES:
-                    if not blockop:
-                        # название функции, класса или метода
-                        if lasttoken.string == self.NAME_CLASS:
-                            itype = stackitem.CLASS
-                        elif lasttoken.string == self.NAME_DEF:
-                            itype = stackitem.DEF
-                        else:
-                            itype = stackitem.OTHER
-
-                        self.stack.append(stackitem(token, itype))
-            elif token.type == tokenize.NEWLINE:
+                        self.blockop = True
+                else:
+                    # class/def с последующим названием или if/elif/... с условием
+                    __check_op_and_push_stack(False)
+            elif self.curtoken.type == tokenize.OP and self.curtoken.exact_type == tokenize.COLON:
+                print(f'\033[31mCOLON after %s (blockop=%s)\033[0m' % ("None" if not self.lasttoken else tokenize.tok_name[self.lasttoken.type], self.blockop), file=sys.stderr)
+                # elif/except без условия, try: и т.п.
+                __check_op_and_push_stack(False)
+            elif self.curtoken.type == tokenize.NEWLINE:
                 # конец составного оператора
                 pass
-            elif token.type == tokenize.INDENT:
-                if self.stack:
-                    self.stack[-1].multiline = True
-
-            elif token.type == tokenize.DEDENT:
-                print('DEDENT after %s' % (tokenize.tok_name[lasttoken.type] if lasttoken else 'None'))
-                if self.stack:
-                    self.todos += self.stack[-1].todos
-                    del self.stack[-1]
-            elif token.type == tokenize.COMMENT:
-                self.append_todo(token)
-            elif token.type == tokenize.STRING and lasttoken.type in self.CMT_PREFIXES:
+            elif self.curtoken.type == tokenize.INDENT:
+                if self.stacktop:
+                    self.stacktop.multiline = True
+            elif self.curtoken.type == tokenize.DEDENT:
+                self.__pop_stack(False)
+            elif self.curtoken.type == tokenize.COMMENT:
+                self.append_todo(self.curtoken)
+            elif self.curtoken.type == tokenize.STRING and self.lasttoken.type in self.CMT_PREFIXES:
                 # дабы сюда попадали только document strings
-                self.append_todo(token)
+                self.append_todo(self.curtoken)
 
-            self.__print_stack(token)
+            self.__print_context('')
 
-            lasttoken = token
+            self.lasttoken = self.curtoken
 
     @classmethod
     def parse_source_file(cls, filename):
@@ -373,11 +430,11 @@ def main(args):
     aparser = argparse.ArgumentParser(description='''%s\n
 Todo list generator for Python %d scripts.''' % (TITLE_VERSION, sys.version_info.major))
 
-    aparser.add_argument('-c', '--colors', help='colorize output',
-        action='store_const', dest='colors', const=True, default=False)
-
     aparser.add_argument('file', help='python script filename',
         action='append', nargs='+')
+
+    aparser.add_argument('-c', '--colors', help='colorize output',
+        action='store_true', dest='colors', default=False)
 
     aparser.add_argument('-O', '--output-file', help='output file name',
         action='store', nargs=1, dest='output', default='-')
@@ -433,5 +490,5 @@ Todo list generator for Python %d scripts.''' % (TITLE_VERSION, sys.version_info
 if __name__ == '__main__':
     #sys.argv += ['badfile.py']
     #sys.argv += ['-c', __file__]#, '-O', 'TODO']
-    sys.argv += ['-c', '../inkcdb/inkcdb.py']
+    #sys.argv += ['-c', '../inkcdb/inkcdb.py']
     sys.exit(main(sys.argv))

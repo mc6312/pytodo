@@ -33,7 +33,7 @@ if DEBUG:
 
 
 TITLE = 'PyToDo'
-VERSION = '1.12%s' % ('-debug' if DEBUG else '')
+VERSION = '1.13%s' % ('-debug' if DEBUG else '')
 TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
 
 
@@ -428,11 +428,11 @@ def main():
                 else:
                     print(colors[COLOR_ERROR] % r, file=sys.stderr)
 
-                print(file=sys.stderr)
+            print(file=sys.stderr)
 
             for todolist in todolists:
                 print(colors[COLOR_FILENAME] % todolist.filename, file=ofile)
-                r.print_todo_list(colors, ofile)
+                todolist.print_todo_list(colors, ofile)
                 print(file=ofile)
 
         finally:

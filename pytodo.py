@@ -33,7 +33,7 @@ if DEBUG:
 
 
 TITLE = 'PyToDo'
-VERSION = '1.11%s' % ('debug' if DEBUG else '')
+VERSION = '1.12%s' % ('-debug' if DEBUG else '')
 TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
 
 
@@ -112,8 +112,10 @@ class ToDoParser():
                          re.UNICODE|re.MULTILINE|re.DOTALL)
     # т.е. TODO без текста будут игнорироваться, ибо нефиг
 
-    def __init__(self):
+    def __init__(self, filepath):
         #TODO проверочный todo-комментарий
+
+        self.filename = os.path.split(filepath)[1]
 
         # список экземпляров todoinfo
         self.todos = []
@@ -256,21 +258,21 @@ class ToDoParser():
         if os.path.splitext(filename)[1].lower() != '.py':
             return (False, '"%s" is not Python script' % filename)
 
-        parser = cls()
+        parser = cls(filename)
 
-        with open(filename, 'rb') as f:
-            try:
-                tokens = tokenize.tokenize(f.readline)
+        try:
+            with open(filename, 'rb') as f:
+                try:
+                    tokens = tokenize.tokenize(f.readline)
 
-                es = parser.parse_tokens(tokens, [])
-                if es:
-                    return (False, es)
-
-            except StopIteration:
-                # генератор выдохся!
-                pass
-            except Exception as ex:
-                return (False, 'error parsing file "%s" - %s' % (filename, str(ex)))
+                    es = parser.parse_tokens(tokens, [])
+                    if es:
+                        return (False, es)
+                except StopIteration:
+                    # генератор выдохся!
+                    pass
+        except Exception as ex:
+            return (False, 'error parsing file "%s" - %s' % (filename, str(ex)))
 
         return (True, parser)
 
@@ -413,16 +415,25 @@ def main():
         else:
             ofile = open(args.output[0], 'w+')
 
+        todolists = []
+
         try:
             for fname in args.file:
+                print('  parsing %s...' % (colors[COLOR_FILENAME] % os.path.split(fname)[1]), file=sys.stderr)
+
                 ok, r = ToDoParser.parse_source_file(fname)
                 if ok:
-                    if r:
-                        print(colors[COLOR_FILENAME] % os.path.split(fname)[1], file=ofile)
-                        r.print_todo_list(colors, ofile)
-                        print(file=ofile)
+                    if r.todos:
+                        todolists.append(r)
                 else:
                     print(colors[COLOR_ERROR] % r, file=sys.stderr)
+
+                print(file=sys.stderr)
+
+            for todolist in todolists:
+                print(colors[COLOR_FILENAME] % todolist.filename, file=ofile)
+                r.print_todo_list(colors, ofile)
+                print(file=ofile)
 
         finally:
             if not ofile is sys.stdout:

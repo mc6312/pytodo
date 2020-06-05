@@ -18,7 +18,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>."""
 
-DEBUG = False
+DEBUG = True
 
 
 import tokenize
@@ -33,7 +33,7 @@ if DEBUG:
 
 
 TITLE = 'PyToDo'
-VERSION = '1.13%s' % ('-debug' if DEBUG else '')
+VERSION = '1.13.1%s' % ('-debug' if DEBUG else '')
 TITLE_VERSION = '%s v%s' % (TITLE, VERSION)
 
 
@@ -64,6 +64,10 @@ def two_line_function(): #@TODO комментарий в заголовке м�
     #@TODO комментарий в теле многострочной функции
     return a
 
+#TODO комментарий после функции
+
+"""TODO многострочный комментарий
+после функции"""
 
 def crazy_function(param=lambda a: a):#функция с лямбдой в параметрах
     try:
@@ -79,6 +83,8 @@ def multi_line_function():
         def double_line_method(self): #@TODO образец TODO-комментария
             '''@TODO образец TODO-комментария в docstring'''
             return 0
+
+    #TODO комментарий в теле функции после вложенной функции
 
     return DemoClass1()
 
@@ -452,6 +458,6 @@ def main():
 
 
 if __name__ == '__main__':
-    #sys.argv += [__file__]
+    sys.argv += [__file__]
     #sys.argv += ['-c', __file__]
     sys.exit(main())
